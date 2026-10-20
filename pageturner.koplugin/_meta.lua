@@ -1,5 +1,6 @@
 return {
     fullname = "翻页器 / Page turner",
+    version = "0.0.0-dev", -- 发布时由 CI 按 tag 注入
     description = [[蓝牙翻页器 + 想法 / 标记选择器。
 Bluetooth page turner + a picker for thoughts and marks.
 
