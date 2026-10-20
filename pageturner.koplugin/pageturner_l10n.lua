@@ -29,7 +29,7 @@ local TW = {
     ["「%s」= %s"] = "「%s」= %s",
     ["请在翻页器上做出「%s」的动作（%d/%d）\n单击 / 连按 2~3 下 / 长按都行，做完稍等"] =
         "請在翻頁器上做出「%s」的動作（%d/%d）\n單擊 / 連按 2~3 下 / 長按都行，做完稍等",
-    ["本页没有想法或标记"] = "本頁沒有想法或標記",
+    ["本页没有想法"] = "本頁沒有想法",
     ["守护进程：%s"] = "守護行程：%s",
     ["在跑"] = "在跑",
     ["没跑"] = "沒跑",
@@ -68,7 +68,7 @@ local EN = {
     ["「%s」= %s"] = "\"%s\" = %s",
     ["请在翻页器上做出「%s」的动作（%d/%d）\n单击 / 连按 2~3 下 / 长按都行，做完稍等"] =
         "Do the gesture for \"%s\" on the page turner (%d/%d)\nA click, 2-3 quick clicks or a long press all work. Wait a moment when done.",
-    ["本页没有想法或标记"] = "No thoughts or marks on this page",
+    ["本页没有想法"] = "No thoughts on this page",
     ["守护进程：%s"] = "Daemon: %s",
     ["在跑"] = "running",
     ["没跑"] = "not running",

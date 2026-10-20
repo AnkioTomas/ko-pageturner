@@ -1,5 +1,5 @@
 --[[--
-翻页器 (pageturner.koplugin)：蓝牙翻页器 + 想法 / 标记选择器。首次使用先在菜单里「绑定翻页器按键」，
+翻页器 (pageturner.koplugin)：蓝牙翻页器 + 想法选择器。首次使用先在菜单里「绑定翻页器按键」，
 依次为三个动作各录一个手势：下一个、上一个、确认。手势 = 翻页器的某个键 + 怎么按：
 单击 / 连按两次 / 连按三次 / 长按。几个键、怎么分配由你自己定，例如：
   三键翻页器   三个键各按一下
@@ -8,7 +8,7 @@
 长按只在翻页器按住期间真的不松开时才有（不少翻页器按下松开是同时发的，录不到长按）。
 同一个键上绑了连按的话，单击要多等一小会儿才能确认不是连按。
 
-  确认      进入选择模式 → 当前页第一条想法 / 段评 / X-Ray 标记高亮
+  确认      进入选择模式 → 当前页第一条想法（段评 / 带笔记的划线）高亮
   下一个    选下一条
   上一个    选上一条
   确认      打开选中项
@@ -357,7 +357,7 @@ function PageTurner:confirm()
     else
         local items = Thoughts.collect(self.ui)
         if not items then
-            UIManager:show(InfoMessage:new{ text = T("本页没有想法或标记"), timeout = 2 })
+            UIManager:show(InfoMessage:new{ text = T("本页没有想法"), timeout = 2 })
             return
         end
         self.mode, self.items, self.base = "select", items, 0

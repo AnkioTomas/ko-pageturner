@@ -1,14 +1,14 @@
 # 翻页器 pageturner.koplugin
 
-Kindle 上 KOReader 的蓝牙翻页器插件，外加一个「想法 / 标记选择器」：用翻页器直接选中并打开当前页的想法、段评和 X-Ray 标记，不用碰屏幕。
+Kindle 上 KOReader 的蓝牙翻页器插件，外加一个「想法选择器」：用翻页器直接选中并打开当前页的想法（他人段评和自己带笔记的划线），不用碰屏幕。
 
-A Bluetooth page-turner plugin for KOReader on Kindle, plus a picker that lets the pager select and open the thoughts, others' reviews and X-Ray marks on the current page.
+A Bluetooth page-turner plugin for KOReader on Kindle, plus a picker that lets the pager select and open the thoughts (others' reviews and your own notes) on the current page.
 
 ## 功能
 
 - **接管翻页器**：自己找到翻页器的输入设备并接进 KOReader，热插拔、设备重建后自动重新接管，不需要 externalkeyboard。
 - **自定义手势**：下一个 / 上一个 / 确认各录一个手势（某个键的单击、连按 2~3 下、长按），单键、双键、三键翻页器都能用。
-- **想法选择器**：确认进入选择模式，当前页的想法、段评、X-Ray 标记依次高亮，再确认打开，弹窗里可滚动。
+- **想法选择器**：确认进入选择模式，当前页的段评和带笔记的划线依次高亮，再确认打开，弹窗里可滚动。
 - **联动月读**：月读里开蓝牙就补位拉起守护进程、接管翻页器、自动连上；翻页器连着时不息屏。没装月读也能正常使用。
 - **多语言**：简体中文、繁体中文、English，跟随 KOReader 语言。
 
@@ -16,7 +16,7 @@ A Bluetooth page-turner plugin for KOReader on Kindle, plus a picker that lets t
 
 - Kindle + KOReader。
 - 翻页器经 [kindle-hid-passthrough](https://github.com/zampierilucas/kindle-hid-passthrough) 守护进程接入（装在 `/mnt/us/kindle_hid_passthrough`，它把蓝牙翻页器变成虚拟键盘 `/dev/input/eventX`）。插件会按需拉起 `main.bin --daemon`。
-- 想法选择器里的段评 / X-Ray 标记来自[月读](https://github.com/AnkioTomas/moon)；没装月读时只有自己带笔记的划线可选。
+- 想法选择器里的段评来自[月读](https://github.com/AnkioTomas/moon)；没装月读时只有自己带笔记的划线可选。
 
 ## 安装
 
@@ -61,7 +61,7 @@ A Bluetooth page-turner plugin for KOReader on Kindle, plus a picker that lets t
 | `main.lua` | 手势识别与绑定、选择模式、菜单、生命周期 |
 | `pageturner_input.lua` | 找到并打开翻页器的输入设备，交给 KOReader |
 | `pageturner_moon.lua` | 联动月读的蓝牙开关，翻页器连着时不息屏 |
-| `pageturner_thoughts.lua` | 收集当前页可选的想法 / 段评 / X-Ray 标记 |
+| `pageturner_thoughts.lua` | 收集当前页可选的想法（段评 / 带笔记的划线） |
 | `pageturner_l10n.lua` | 界面翻译 |
 | `moon_source.lua` | 在月读里登记扩展 id `ext.pageturner` |
 

@@ -1,8 +1,8 @@
 --[[--
-当前屏可选的标记：他人段评、X-Ray 实体 + 自己带笔记的划线，统一成 { boxes, open }，按屏幕位置排序。
+当前屏可选的想法：他人段评 + 自己带笔记的划线，统一成 { boxes, open }，按屏幕位置排序。
 
-  - 段评 / X-Ray：月读阅读页公共标记层上一帧实际画出的标记 `ui._book_page_marks.painted`，
-    每项 { mark = { tap }, pieces = 屏幕框 }，tap 开段评窗 / 实体详情。互斥后被让掉的不在里面，
+  - 段评：月读阅读页公共标记层上一帧实际画出的标记 `ui._book_page_marks.painted` 里属于段评图层的，
+    每项 { mark = { tap }, pieces = 屏幕框 }，tap 开段评窗。X-Ray 等其它图层的标记不收。互斥后被让掉的不在里面，
     所见即所选。
   - 自己的划线：KOReader 原生 `ui.annotation.annotations` 里 note 非空的，开 TextViewer 看笔记。
 
@@ -32,10 +32,12 @@ local function visible(boxes)
 end
 
 local function pageMarks(ui, out)
-    local layer = ui._book_page_marks
-    if not layer then return end
+    local layer, reviews = ui._book_page_marks, ui._book_reviews_marks
+    if not (layer and reviews) then return end
+    local own = {}
+    for _idx, mark in ipairs(reviews.current) do own[mark] = true end
     for _idx, item in ipairs(layer.painted) do
-        local boxes = visible(item.pieces)
+        local boxes = own[item.mark] and visible(item.pieces)
         if boxes then out[#out + 1] = { boxes = boxes, open = item.mark.tap } end
     end
 end
@@ -55,7 +57,7 @@ local function mine(ui, out)
     end
 end
 
---- 当前屏的标记与想法；一条都没有返回 nil。
+--- 当前屏的想法；一条都没有返回 nil。
 ---@param ui table ReaderUI
 ---@return table[]|nil
 function Thoughts.collect(ui)
