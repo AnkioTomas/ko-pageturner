@@ -27,9 +27,36 @@ local Input = {}
 Input.keyboard_fds = {}
 Input.connected_keyboards = 0
 
--- 机身自带的那些输入设备，别去动（翻页器是后插进来的）
+-- 翻页器就这三个键（70 ScrollLock / 104 PageUp / 109 PageDown）。
+-- KOReader 在 handleKeyBoardEv 里查 event_map 查不到就直接把事件丢掉 ——
+-- 表现就是「按了等于没按」。插件自己的钩子会先接走这些键，这张表是兜底：
+-- 钩子没接住的时候（不在阅读页、手势没凑成）KOReader 至少还认得这些键。
+local PAGER_EVENT_MAP = {
+    [70]  = "ScrollLock",
+    [104] = "LPgBack",   -- PageUp
+    [109] = "LPgFwd",    -- PageDown
+}
+local event_map_merged = false
+
+--- 把翻页器键码并进 KOReader 的按键映射：只补空缺，不动机身已有的键。
+function Input:ensureEventMap()
+    if event_map_merged then return end
+    local em = Device.input and Device.input.event_map
+    if type(em) ~= "table" then return end
+    for k, v in pairs(PAGER_EVENT_MAP) do
+        if em[k] == nil then em[k] = v end
+    end
+    event_map_merged = true
+    logger.info("[pageturner/input] pager event map merged")
+end
+
+-- 机身自带的那些输入设备，别去动（翻页器是后插进来的）。
+-- 名字按真机上看到的写：Kindle 上电源键叫 bd71828-pwrkey、触摸屏叫 goodix-ts，
+-- 光靠 "power" / "touchscreen" 匹配不上，结果这俩也被当成翻页器接管了 ——
+-- 状态里显示「已接管 3 个设备」，其实只有一个是真翻页器。
 local BUILTIN_PATTERNS = {
-    "volume", "power", "cover", "hall", "button", "gpio", "touchscreen", "accelerometer",
+    "volume", "power", "pwrkey", "bd71828", "goodix", "cover", "hall", "button",
+    "gpio", "touchscreen", "accelerometer",
 }
 
 local function isBuiltin(name)
@@ -52,9 +79,13 @@ local O_NONBLOCK = 2048   -- Linux 上 ARM / x86 都是 0x800
 -- 拿不到就退回解析 /proc/bus/input/devices —— FBInk 只有电子墨水设备上才有，
 -- 模拟器 / 某些机型上没有，那时候 FBInkInput 这个符号压根不存在，
 -- 一访问就 "missing declaration for symbol"，整个接管就悄悄失败了。
-function Input:findKeyboards()
-    local ok, list = pcall(function() return self:scanWithFBInk() end)
-    if ok and type(list) == "table" and #list > 0 then return list end
+-- cheap=true 只走 /proc/bus（不打开设备）：FBInk 的 scan 会把扫到的设备都 open 一遍，
+-- 定时重扫用它的话每扫一轮就漏几个 fd。留给首次接管用。
+function Input:findKeyboards(cheap)
+    if not cheap then
+        local ok, list = pcall(function() return self:scanWithFBInk() end)
+        if ok and type(list) == "table" and #list > 0 then return list end
+    end
     return self:scanProcBus()
 end
 
@@ -67,11 +98,16 @@ function Input:scanWithFBInk()
     for i = 0, n - 1 do
         local dev = devices.devices[i]
         if dev then
-            out[#out + 1] = {
-                event_path = ffi.string(dev.path),
-                event_fd = tonumber(dev.fd) or -1,
-                name = ffi.string(dev.name),
-            }
+            local name = ffi.string(dev.name)
+            -- FBInk 会把机身自带的电源键、触摸屏一起报上来，这里同样要滤掉：
+            -- 不然它们照样被接管（还多占一个 fd），状态里又变成好几个设备。
+            if not isBuiltin(name) then
+                out[#out + 1] = {
+                    event_path = ffi.string(dev.path),
+                    event_fd = tonumber(dev.fd) or -1,
+                    name = name,
+                }
+            end
         end
     end
     return out
@@ -158,6 +194,8 @@ function Input:setupKeyboard(data)
         end
     end
 
+    self:ensureEventMap()
+
     -- FBInk 那条路会顺便带一个已经打开的 fd；从 /proc/bus 兜底扫出来的只有路径，
     -- 得自己开一个。
     local fd = data.event_fd
@@ -196,9 +234,9 @@ function Input:setupKeyboard(data)
 end
 
 --- 扫一遍，把还没接管的设备接上。启动时、守护进程拉起后、自愈时都会调。
-function Input:findAndSetupKeyboards()
+function Input:findAndSetupKeyboards(cheap)
     self:pruneDead()
-    local found = self:findKeyboards()
+    local found = self:findKeyboards(cheap)
     local n = 0
     for _, data in ipairs(found) do
         if self:setupKeyboard(data) then n = n + 1 end
@@ -208,11 +246,22 @@ end
 
 --- 设备热插拔：翻页器待机/重连时会被 KHP 删掉再建出来。
 function Input:onInsert(path)
-    if not path or self.keyboard_fds[path] then return end
+    if not path then return end
+    local old = self.keyboard_fds[path]
+    if old then
+        -- 记着这个路径不代表设备还活着：翻页器待机重连时 KHP 会把设备删掉再建出来，
+        -- 我们手里的 fd 已经是死的。以前这里直接 return，新建出来的设备就再也没人
+        -- 接管 —— 状态里还挂着这个设备，按下去却一个反应都没有。
+        if fdAlive(old) then return end
+        self.keyboard_fds[path] = nil
+        if Device.input and Device.input.opened_devices then
+            Device.input.opened_devices[path] = nil
+        end
+    end
     -- KHP 建出设备到它可用之间有点延迟，等一下再扫
     local UIManager = require("ui/uimanager")
     UIManager:scheduleIn(0.5, function()
-        for _, data in ipairs(self:findKeyboards()) do
+        for _, data in ipairs(self:findKeyboards(true)) do
             if data.event_path == path then
                 self:setupKeyboard(data)
                 break
