@@ -62,8 +62,9 @@ local ACTIONS = {
     { key = "prev", label = T("上一个"), step = -1 },
     { key = "ok",   label = T("确认") },
 }
-local TAP_GAP = 0.4
+local TAP_GAP = 0.5      -- 连按判定窗口：两次按下间隔在这个数以内算连按
 local LONG_PRESS = 0.5
+local DEBOUNCE = 0.08    -- 见 feed()：一个动作被发成两次按下时只算一次
 local MAX_TAPS = 3
 local LEARN = { max = MAX_TAPS, long = true } -- 录手势时什么都认
 
@@ -195,8 +196,8 @@ function PageTurner:onMoonBluetoothOn()
     end)
 end
 
-function PageTurner:takeOverAll()
-    local ok, n = pcall(Input.findAndSetupKeyboards, Input)
+function PageTurner:takeOverAll(cheap)
+    local ok, n = pcall(Input.findAndSetupKeyboards, Input, cheap)
     if not ok then
         logger.warn("[pageturner] 接管失败: " .. tostring(n))
         return 0
@@ -214,16 +215,16 @@ end
 function PageTurner:onEvdevInputInsert(path) Input:onInsert(path) end
 function PageTurner:onEvdevInputRemove(path) Input:onRemove(path) end
 
---- 启动后 duration 秒内每 2 秒扫一次，直到接上设备。
-function PageTurner:startRescanLoop(duration)
+--- 每 10 秒扫一遍：清掉死掉的 fd、把重新出现的翻页器接上。
+-- 不能「接到一个就停」：机身自带的设备会让第一次扫描结果 >0，循环立刻退出，
+-- 之后翻页器一待机重连就再也没人接管了 —— 只剩状态里那行「已接管 N 个设备」在骗人。
+-- 走 cheap 扫描（不开 fd），一轮就一两次 readlink，可以一直跑。
+function PageTurner:startRescanLoop()
     if rescanning then return end
     rescanning = true
-    local remaining = duration
     local function loop()
-        if remaining <= 0 then rescanning = false return end
-        UIManager:scheduleIn(2, function()
-            if self:takeOverAll() > 0 then rescanning = false return end
-            remaining = remaining - 2
+        UIManager:scheduleIn(10, function()
+            self:takeOverAll(true)
             loop()
         end)
     end
@@ -235,7 +236,7 @@ function PageTurner:healFd()
     local now = os.time()
     if self._last_heal_at and now - self._last_heal_at < HEAL_COOLDOWN then return end
     local pid = ffi.C.getpid()
-    for _idx, dev in ipairs(Input:findKeyboards()) do
+    for _idx, dev in ipairs(Input:findKeyboards(true)) do
         local path = dev.event_path
         local cmd = string.format(
             'for f in /proc/%d/fd/*; do t=$(readlink "$f" 2>/dev/null); ' ..
@@ -394,10 +395,19 @@ local function emit(code, kind)
     end
 end
 
+--- 同一个键上 80ms 内重复来的事件当成抖动丢掉。
+-- 有些翻页器一次按下会发两遍（按键本身抖也算），不滤的话一次单击被数成连按两下，
+-- 真的连按两下又变成三四下 —— 而三四下一般没绑，表现就是「双击按了没反应」。
+local function bounce(st, slot, now)
+    if st[slot] and now - st[slot] < DEBOUNCE then return true end
+    st[slot] = now
+    return false
+end
+
 local function feed(code, ev, g)
     local st = states[code] or { n = 0 }
     states[code] = st
-    local now = util.gettime()
+    local now = util.getTimestamp()
     local function tap()
         st.n, st.stamp = st.n + 1, now
         local function fire()
@@ -411,8 +421,9 @@ local function feed(code, ev, g)
         end)
     end
     if not g.long then
-        if ev.value == 1 then tap() end
+        if ev.value == 1 and not bounce(st, "last_down", now) then tap() end
     elseif ev.value == 1 then
+        if bounce(st, "last_down", now) then return end
         local h = { at = now }
         st.down = h
         UIManager:scheduleIn(LONG_PRESS, function()
@@ -421,6 +432,7 @@ local function feed(code, ev, g)
             emit(code, "long")
         end)
     elseif ev.value == 0 then
+        if bounce(st, "last_up", now) then return end
         local h = st.down
         st.down = nil
         if not h or h.done then return end
@@ -520,7 +532,7 @@ function PageTurner:init()
     self:loadSettings()
     self.ui.menu:registerToMainMenu(self)
     self:takeOverAll()
-    self:startRescanLoop(180)
+    self:startRescanLoop()
     self:startFdHealLoop()
 
     self:applyBindings()
