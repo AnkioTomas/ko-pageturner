@@ -15,7 +15,7 @@ A Bluetooth page-turner plugin for KOReader on Kindle, plus a picker that lets t
 ## 前置条件
 
 - Kindle + KOReader。
-- 翻页器经 kindle-hid-passthrough 守护进程接入（装在 `/mnt/us/kindle_hid_passthrough`，它把蓝牙翻页器变成虚拟键盘 `/dev/input/eventX`）。插件会按需拉起 `main.bin --daemon`。
+- 翻页器经 [kindle-hid-passthrough](https://github.com/zampierilucas/kindle-hid-passthrough) 守护进程接入（装在 `/mnt/us/kindle_hid_passthrough`，它把蓝牙翻页器变成虚拟键盘 `/dev/input/eventX`）。插件会按需拉起 `main.bin --daemon`。
 - 想法选择器里的段评 / X-Ray 标记来自[月读](https://github.com/AnkioTomas/moon)；没装月读时只有自己带笔记的划线可选。
 
 ## 安装
