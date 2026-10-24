@@ -1,21 +1,23 @@
 # 翻页器 pageturner.koplugin
 
-Kindle 上 KOReader 的蓝牙翻页器插件，外加一个「想法选择器」：用翻页器直接选中并打开当前页的想法（他人段评和自己带笔记的划线），不用碰屏幕。
+KOReader 的蓝牙翻页器插件（Kindle / Kobo），外加一个「想法选择器」：用翻页器直接选中并打开当前页的想法（他人段评和自己带笔记的划线），不用碰屏幕。
 
-A Bluetooth page-turner plugin for KOReader on Kindle, plus a picker that lets the pager select and open the thoughts (others' reviews and your own notes) on the current page.
+A Bluetooth page-turner plugin for KOReader (Kindle / Kobo), plus a picker that lets the pager select and open the thoughts (others' reviews and your own notes) on the current page.
 
 ## 功能
 
 - **接管翻页器**：自己找到翻页器的输入设备并接进 KOReader，热插拔、设备重建后自动重新接管，不需要 externalkeyboard。
 - **自定义手势**：下一个 / 上一个 / 确认各录一个手势（某个键的单击、连按 2~3 下、长按），单键、双键、三键翻页器都能用。
 - **想法选择器**：确认进入选择模式，当前页的段评和带笔记的划线依次高亮，再确认打开，弹窗里可滚动。
-- **联动月读**：月读里开蓝牙就补位拉起守护进程、接管翻页器、自动连上；翻页器连着时不息屏。没装月读也能正常使用。
+- **联动月读**：月读里开蓝牙就接管翻页器、自动连上；翻页器连着时不息屏；设置页同时出现在月读里。没装月读也能正常使用。
 - **多语言**：简体中文、繁体中文、English，跟随 KOReader 语言。
 
 ## 前置条件
 
-- Kindle + KOReader。
-- 翻页器经 [kindle-hid-passthrough](https://github.com/zampierilucas/kindle-hid-passthrough) 守护进程接入（装在 `/mnt/us/kindle_hid_passthrough`，它把蓝牙翻页器变成虚拟键盘 `/dev/input/eventX`）。插件会按需拉起 `main.bin --daemon`。
+- Kindle 或 Kobo 上的 KOReader。插件只负责接管输入设备，蓝牙连接本身有三种来源，对应[月读](https://github.com/AnkioTomas/moon)支持的三种蓝牙方案，任选其一：
+  - Kindle：[kindle-hid-passthrough](https://github.com/zampierilucas/kindle-hid-passthrough) 守护进程（装在 `/mnt/us/kindle_hid_passthrough`，把蓝牙翻页器变成虚拟键盘 `/dev/input/eventX`）。没装月读时插件启动会拉起 `main.bin --daemon`，装了月读则由月读的蓝牙开关拉起。
+  - Kindle 自带蓝牙（btfd）：没有 KHP 时，插件会停掉系统的 `input_manager`（它独占翻页器输入节点），退出 KOReader 时恢复。需要月读负责配对连接。
+  - Kobo 自带蓝牙：由月读配对连接，插件接管生成的输入设备。**Kobo 路径没有在真机上验证过。**
 - 想法选择器里的段评来自[月读](https://github.com/AnkioTomas/moon)；没装月读时只有自己带笔记的划线可选。
 
 ## 安装
@@ -49,7 +51,6 @@ A Bluetooth page-turner plugin for KOReader on Kindle, plus a picker that lets t
 
 - **翻页器状态**：绑定、守护进程、已接管设备、月读蓝牙与连接状态。
 - **翻页器连着时不息屏 / 蓝牙开了自动连翻页器**：两个开关，默认开。
-- 守护进程不用管：装了月读由月读的蓝牙开关拉起，没装月读则插件启动时自己拉（需要 KHP）。
 
 ## 排错
 
@@ -61,7 +62,7 @@ A Bluetooth page-turner plugin for KOReader on Kindle, plus a picker that lets t
 | 文件 | 作用 |
 | --- | --- |
 | `main.lua` | 手势识别与绑定、选择模式、菜单、生命周期 |
-| `pageturner_input.lua` | 找到并打开翻页器的输入设备，交给 KOReader |
+| `pageturner_input.lua` | 找到并打开翻页器的输入设备，交给 KOReader（Kindle 无 KHP 时释放系统 input_manager） |
 | `pageturner_moon.lua` | 联动月读的蓝牙开关，翻页器连着时不息屏 |
 | `pageturner_thoughts.lua` | 收集当前页可选的想法（段评 / 带笔记的划线） |
 | `pageturner_l10n.lua` | 界面翻译 |
