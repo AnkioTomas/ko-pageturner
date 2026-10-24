@@ -27,7 +27,7 @@ local Input = {}
 Input.keyboard_fds = {}
 Input.connected_keyboards = 0
 
--- 翻页器就这三个键（70 ScrollLock / 104 PageUp / 109 PageDown）。
+-- 翻页键（70 ScrollLock / 104 PageUp / 109 PageDown）加遥控器常见的方向键、确认、返回、主页。
 -- KOReader 在 handleKeyBoardEv 里查 event_map 查不到就直接把事件丢掉 ——
 -- 表现就是「按了等于没按」。插件自己的钩子会先接走这些键，这张表是兜底：
 -- 钩子没接住的时候（不在阅读页、手势没凑成）KOReader 至少还认得这些键。
@@ -35,6 +35,8 @@ local PAGER_EVENT_MAP = {
     [70]  = "ScrollLock",
     [104] = "LPgBack",   -- PageUp
     [109] = "LPgFwd",    -- PageDown
+    [103] = "Up", [108] = "Down", [105] = "Left", [106] = "Right",
+    [28]  = "Press", [158] = "Back", [102] = "Home",
 }
 local event_map_merged = false
 
@@ -48,6 +50,26 @@ function Input:ensureEventMap()
     end
     event_map_merged = true
     logger.info("[pageturner/input] pager event map merged")
+end
+
+-- 没有 KHP、翻页器走 Kindle 自带 btfd 时，系统的 input_manager 会 EVIOCGRAB 独占 uhid 键盘节点
+-- （真机验证：btmanagerd 收到了按键报告，event 节点却一个事件都没有），KOReader 永远收不到按键。
+-- 接管设备后停掉它，KOReader 退出时拉起。有 KHP 时设备是 KHP 建的，不碰系统服务。
+local KHP_BIN = "/mnt/us/kindle_hid_passthrough/dist/main.bin"
+local manager_stopped = false
+
+function Input:releaseSystemInput()
+    if manager_stopped or not Device:isKindle() then return end
+    local f = io.open(KHP_BIN, "r")
+    if f then f:close() return end
+    manager_stopped = true
+    os.execute("stop input_manager >/dev/null 2>&1")
+    local exit = Device.exit
+    Device.exit = function(self, ...)
+        os.execute("start input_manager >/dev/null 2>&1")
+        return exit(self, ...)
+    end
+    logger.info("[pageturner/input] system input_manager stopped")
 end
 
 -- 机身自带的那些输入设备，别去动（翻页器是后插进来的）。
@@ -195,6 +217,7 @@ function Input:setupKeyboard(data)
     end
 
     self:ensureEventMap()
+    self:releaseSystemInput()
 
     -- FBInk 那条路会顺便带一个已经打开的 fd；从 /proc/bus 兜底扫出来的只有路径，
     -- 得自己开一个。
@@ -203,13 +226,13 @@ function Input:setupKeyboard(data)
         fd = ffi.C.open(path, O_RDONLY + O_NONBLOCK)
     end
     if type(fd) ~= "number" or fd < 0 then
-        logger.warn("[pageturner/input] 打不开设备 " .. tostring(path))
+        logger.warn("[pageturner/input] cannot open device " .. tostring(path))
         return false
     end
 
     local ok, err = pcall(function() Device.input:fdopen(fd, path, data.name) end)
     if not ok then
-        logger.warn("[pageturner/input] fdopen 失败 " .. tostring(path) .. ": " .. tostring(err))
+        logger.warn("[pageturner/input] fdopen failed " .. tostring(path) .. ": " .. tostring(err))
         return false
     end
 

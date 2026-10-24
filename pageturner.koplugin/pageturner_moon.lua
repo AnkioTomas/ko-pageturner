@@ -112,18 +112,18 @@ function Moon:ensureConnected(plugin)
         end
     end
 
-    logger.info("[pageturner] 蓝牙已开但翻页器没连，替用户连上: "
+    logger.info("[pageturner] Bluetooth is on but the pager is not connected, connecting it: "
         .. tostring(dev and (dev.name or dev.address)))
     pcall(function()
         m.setConnected(dev, true, function(ok, err)
             if not ok then
                 self._connect_failed_at = os.time()
-                logger.warn("[pageturner] 连接翻页器失败: " .. tostring(err)
+                logger.warn("[pageturner] failed to connect pager: " .. tostring(err)
                     .. "（5 分钟内不再自动重试，请在月读面板或 BTmanager 里手动连）")
                 return
             end
             self._connect_failed_at = nil
-            logger.info("[pageturner] 翻页器已连上")
+            logger.info("[pageturner] pager connected")
             -- 连上了输入设备才会出现，这时候接管才有意义
             pcall(function() plugin:takeOverAll() end)
         end)

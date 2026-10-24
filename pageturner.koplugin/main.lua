@@ -43,10 +43,8 @@ local PageTurner = WidgetContainer:extend{
 }
 
 local DEFAULTS = {
-    autostart_daemon = true,
     auto_connect     = true,
     keep_awake       = true,
-    follow_moon_bt   = true,
     last_pager_addr  = "",
     binds            = {},   -- 动作 -> 手势 { code = 键码, kind = 1 / 2 / 3（连按次数）或 "long" }
 }
@@ -178,20 +176,22 @@ function PageTurner:daemonRunning()
 end
 
 function PageTurner:ensureDaemon()
+    local bin = io.open(KHP_DIR .. "/dist/main.bin", "r")
+    if not bin then return end
+    bin:close()
     if self:daemonRunning() then return end
     os.execute("cd " .. KHP_DIR .. " && setsid ./dist/ld-linux-armhf.so.3" ..
         " --library-path ./dist ./dist/main.bin --daemon >>" .. BT_LOG .. " 2>&1 &")
     logger.info("[pageturner] daemon started")
 end
 
---- 月读里开了蓝牙：等它自己拉守护进程（5 秒），还没起来我们补一次，再接管设备。
--- 不能两边同时拉，两个进程会抢蓝牙。
+--- 月读里开了蓝牙：守护进程由月读拉起（不能两边同时拉，两个进程会抢蓝牙），
+-- 这里只等它起来（5 秒）再接管设备。
 function PageTurner:onMoonBluetoothOn()
     if self._moon_on_pending then return end
     self._moon_on_pending = true
     UIManager:scheduleIn(5, function()
         self._moon_on_pending = false
-        if self.settings.autostart_daemon then self:ensureDaemon() end
         self:takeOverAll()
     end)
 end
@@ -199,7 +199,7 @@ end
 function PageTurner:takeOverAll(cheap)
     local ok, n = pcall(Input.findAndSetupKeyboards, Input, cheap)
     if not ok then
-        logger.warn("[pageturner] 接管失败: " .. tostring(n))
+        logger.warn("[pageturner] takeover failed: " .. tostring(n))
         return 0
     end
     if n ~= last_taken then logger.info("[pageturner] took over " .. n .. " device(s)") end
@@ -484,6 +484,14 @@ function PageTurner:statusText()
     return table.concat(lines, "\n")
 end
 
+-- 月读设置页（moon_source.lua）经广播事件驱动这三个入口，设置值仍由插件自己存。
+function PageTurner:onPageTurnerBind() self:bind(1, {}) return true end
+function PageTurner:onPageTurnerStatus()
+    UIManager:show(InfoMessage:new{ text = self:statusText() })
+    return true
+end
+function PageTurner:onPageTurnerToggle(key) self:toggle(key) return true end
+
 function PageTurner:addToMainMenu(menu_items)
     local function toggleItem(text, key)
         return {
@@ -506,20 +514,8 @@ function PageTurner:addToMainMenu(menu_items)
                 keep_menu_open = true,
                 callback = function() self:bind(1, {}) end,
             },
-            {
-                text = T("重新接管翻页器"),
-                keep_menu_open = true,
-                callback = function()
-                    local n = self:takeOverAll()
-                    UIManager:show(InfoMessage:new{
-                        text = n > 0 and T("已接管 %d 个设备", n) or T("没找到翻页器设备"),
-                        timeout = 2,
-                    })
-                end,
-            },
             toggleItem(T("翻页器连着时不息屏"), "keep_awake"),
             toggleItem(T("蓝牙开了自动连翻页器"), "auto_connect"),
-            toggleItem(T("自动拉起守护进程"), "autostart_daemon"),
         },
     }
 end
@@ -543,10 +539,10 @@ function PageTurner:init()
         self.ui.view:registerViewModule("pageturner", { paintTo = function(_p, bb) self:paintSelection(bb) end })
     end
 
-    if Moon:available() and self.settings.follow_moon_bt then
+    if Moon:available() then
         Moon:startWatch(self)
         Moon:sync(self)
-    elseif self.settings.autostart_daemon then
+    else
         self:ensureDaemon()
     end
 end
