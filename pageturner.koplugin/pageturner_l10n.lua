@@ -8,7 +8,6 @@
 local TW = {
     ["翻页器"] = "翻頁器",
     ["翻页器状态"] = "翻頁器狀態",
-    ["绑定翻页器按键"] = "綁定翻頁器按鍵",
     ["翻页器连着时不息屏"] = "翻頁器連著時不熄屏",
     ["蓝牙开了自动连翻页器"] = "藍牙開了自動連翻頁器",
     ["下一个"] = "下一個",
@@ -20,10 +19,9 @@ local TW = {
     ["连按%d下"] = "連按%d下",
     ["键 %d %s"] = "鍵 %d %s",
     ["%s：%s"] = "%s：%s",
-    ["按键绑定完成"] = "按鍵綁定完成",
-    ["这个手势已经绑过了，请换一个"] = "這個手勢已經綁過了，請換一個",
+    ["这个手势已经绑给「%s」了，请换一个"] = "這個手勢已經綁給「%s」了，請換一個",
     ["「%s」= %s"] = "「%s」= %s",
-    ["请在翻页器上做出「%s」的动作（%d/%d）\n单击 / 连按 2~3 下 / 长按都行，做完稍等"] =
+    ["请在翻页器上做出「%s」的动作\n单击 / 连按 2~3 下 / 长按都行，做完稍等"] =
         "請在翻頁器上做出「%s」的動作（%d/%d）\n單擊 / 連按 2~3 下 / 長按都行，做完稍等",
     ["本页没有想法"] = "本頁沒有想法",
     ["守护进程：%s"] = "守護行程：%s",
@@ -45,7 +43,6 @@ local TW = {
 local EN = {
     ["翻页器"] = "Page turner",
     ["翻页器状态"] = "Page turner status",
-    ["绑定翻页器按键"] = "Bind page turner keys",
     ["翻页器连着时不息屏"] = "Keep screen awake while connected",
     ["蓝牙开了自动连翻页器"] = "Auto-connect when Bluetooth is on",
     ["下一个"] = "Next",
@@ -57,10 +54,9 @@ local EN = {
     ["连按%d下"] = "%d clicks",
     ["键 %d %s"] = "key %d, %s",
     ["%s：%s"] = "%s: %s",
-    ["按键绑定完成"] = "Key binding done",
-    ["这个手势已经绑过了，请换一个"] = "This gesture is already bound, try another",
+    ["这个手势已经绑给「%s」了，请换一个"] = "This gesture is already bound to \"%s\", try another",
     ["「%s」= %s"] = "\"%s\" = %s",
-    ["请在翻页器上做出「%s」的动作（%d/%d）\n单击 / 连按 2~3 下 / 长按都行，做完稍等"] =
+    ["请在翻页器上做出「%s」的动作\n单击 / 连按 2~3 下 / 长按都行，做完稍等"] =
         "Do the gesture for \"%s\" on the page turner (%d/%d)\nA click, 2-3 quick clicks or a long press all work. Wait a moment when done.",
     ["本页没有想法"] = "No thoughts on this page",
     ["守护进程：%s"] = "Daemon: %s",

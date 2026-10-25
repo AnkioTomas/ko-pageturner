@@ -1,6 +1,6 @@
 --[[--
-翻页器 (pageturner.koplugin)：蓝牙翻页器 + 想法选择器。首次使用先在菜单里「绑定翻页器按键」，
-依次为三个动作各录一个手势：下一个、上一个、确认。手势 = 翻页器的某个键 + 怎么按：
+翻页器 (pageturner.koplugin)：蓝牙翻页器 + 想法选择器。首次使用先在菜单里点「下一个 / 上一个 / 确认」，
+为三个动作各录一个手势：下一个、上一个、确认。手势 = 翻页器的某个键 + 怎么按：
 单击 / 连按两次 / 连按三次 / 长按。几个键、怎么分配由你自己定，例如：
   三键翻页器   三个键各按一下
   双键翻页器   两个键各按一下，确认录成某个键连按两次
@@ -55,11 +55,8 @@ local HEAL_COOLDOWN = 60
 
 -- 翻页器的按键由用户在菜单里「学习」绑定：对每个动作录一次手势（键码 + 单击 / 连按 / 长按）。
 -- 所有绑定的键都由我们的钩子接管（不进 event_map）：下一个 / 上一个在正常读书时就是翻页。
-local ACTIONS = {
-    { key = "next", label = T("下一个"), step = 1 },
-    { key = "prev", label = T("上一个"), step = -1 },
-    { key = "ok",   label = T("确认") },
-}
+local Binds = require("pageturner_binds")
+local ACTIONS, gestureName = Binds.ACTIONS, Binds.gestureName
 local TAP_GAP = 0.5      -- 连按判定窗口：两次按下间隔在这个数以内算连按
 local LONG_PRESS = 0.5
 local DEBOUNCE = 0.08    -- 见 feed()：一个动作被发成两次按下时只算一次
@@ -123,40 +120,31 @@ function PageTurner:applyBindings()
     end
 end
 
-local function gestureName(b)
-    if not b then return T("未绑定") end
-    local how = b.kind == "long" and T("长按") or (b.kind == 1 and T("单击") or T("连按%d下", b.kind))
-    return T("键 %d %s", b.code, how)
-end
-
---- 绑定向导：逐个动作录手势；走完才整体生效，中途放弃不改旧绑定。
-function PageTurner:bind(step, binds)
-    local a = ACTIONS[step]
-    if not a then
-        capture = nil
-        self.settings.binds = binds
-        self:applyBindings()
-        self:saveSettings()
-        UIManager:show(InfoMessage:new{ text = T("按键绑定完成"), timeout = 2 })
-        return
+--- 给一个动作录手势；录完立即生效，中途放弃不改旧绑定。
+function PageTurner:bind(key)
+    local a, labels = nil, {}
+    for _idx, x in ipairs(ACTIONS) do
+        labels[x.key] = x.label
+        if x.key == key then a = x end
     end
     local msg
     capture = function(code, kind)
         capture = nil
         UIManager:close(msg)
-        for _idx, taken in pairs(binds) do
-            if taken.code == code and taken.kind == kind then
-                UIManager:show(InfoMessage:new{ text = T("这个手势已经绑过了，请换一个"), timeout = 2 })
-                return self:bind(step, binds)
+        for other, taken in pairs(self.settings.binds) do
+            if other ~= key and taken.code == code and taken.kind == kind then
+                UIManager:show(InfoMessage:new{ text = T("这个手势已经绑给「%s」了，请换一个", labels[other]), timeout = 2 })
+                return self:bind(key)
             end
         end
-        binds[a.key] = { code = code, kind = kind }
-        UIManager:show(InfoMessage:new{ text = T("「%s」= %s", a.label, gestureName(binds[a.key])), timeout = 1.5 })
-        UIManager:scheduleIn(1.6, function() self:bind(step + 1, binds) end)
+        self.settings.binds[key] = { code = code, kind = kind }
+        self:applyBindings()
+        self:saveSettings()
+        UIManager:show(InfoMessage:new{ text = T("「%s」= %s", a.label, gestureName(self.settings.binds[key])), timeout = 2 })
     end
     local mine = capture
     msg = InfoMessage:new{
-        text = T("请在翻页器上做出「%s」的动作（%d/%d）\n单击 / 连按 2~3 下 / 长按都行，做完稍等", a.label, step, #ACTIONS),
+        text = T("请在翻页器上做出「%s」的动作\n单击 / 连按 2~3 下 / 长按都行，做完稍等", a.label),
         timeout = 20,
         dismiss_callback = function() if capture == mine then capture = nil end end,
     }
@@ -485,7 +473,7 @@ function PageTurner:statusText()
 end
 
 -- 月读设置页（moon_source.lua）经广播事件驱动这三个入口，设置值仍由插件自己存。
-function PageTurner:onPageTurnerBind() self:bind(1, {}) return true end
+function PageTurner:onPageTurnerBind(key) self:bind(key) return true end
 function PageTurner:onPageTurnerStatus()
     UIManager:show(InfoMessage:new{ text = self:statusText() })
     return true
@@ -500,6 +488,16 @@ function PageTurner:addToMainMenu(menu_items)
             callback = function() self:toggle(key) end,
         }
     end
+    local function bindItem(a)
+        return {
+            text_func = function() return T("%s：%s", a.label, gestureName(self.settings.binds[a.key])) end,
+            keep_menu_open = true,
+            callback = function(touchmenu_instance)
+                self:bind(a.key)
+                if touchmenu_instance then touchmenu_instance:closeMenu() end
+            end,
+        }
+    end
     menu_items.bt_pager = {
         text = T("翻页器"),
         sorting_hint = "network",
@@ -509,11 +507,7 @@ function PageTurner:addToMainMenu(menu_items)
                 keep_menu_open = true,
                 callback = function() UIManager:show(InfoMessage:new{ text = self:statusText() }) end,
             },
-            {
-                text = T("绑定翻页器按键"),
-                keep_menu_open = true,
-                callback = function() self:bind(1, {}) end,
-            },
+            bindItem(ACTIONS[1]), bindItem(ACTIONS[2]), bindItem(ACTIONS[3]),
             toggleItem(T("翻页器连着时不息屏"), "keep_awake"),
             toggleItem(T("蓝牙开了自动连翻页器"), "auto_connect"),
         },
