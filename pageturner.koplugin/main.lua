@@ -473,6 +473,13 @@ function PageTurner:statusText()
 end
 
 -- 月读设置页（moon_source.lua）经广播事件驱动这三个入口，设置值仍由插件自己存。
+function PageTurner:clearBinds()
+    self.settings.binds = {}
+    self:applyBindings()
+    self:saveSettings()
+    UIManager:show(InfoMessage:new{ text = T("已清除全部按键绑定"), timeout = 2 })
+end
+function PageTurner:onPageTurnerClear() self:clearBinds() return true end
 function PageTurner:onPageTurnerBind(key) self:bind(key) return true end
 function PageTurner:onPageTurnerStatus()
     UIManager:show(InfoMessage:new{ text = self:statusText() })
@@ -508,6 +515,11 @@ function PageTurner:addToMainMenu(menu_items)
                 callback = function() UIManager:show(InfoMessage:new{ text = self:statusText() }) end,
             },
             bindItem(ACTIONS[1]), bindItem(ACTIONS[2]), bindItem(ACTIONS[3]),
+            {
+                text = T("清除全部按键绑定"),
+                keep_menu_open = true,
+                callback = function() self:clearBinds() end,
+            },
             toggleItem(T("翻页器连着时不息屏"), "keep_awake"),
             toggleItem(T("蓝牙开了自动连翻页器"), "auto_connect"),
         },

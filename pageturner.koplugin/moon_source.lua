@@ -79,6 +79,7 @@ local function settingEntries(desktop)
                     { title = T("按键"), rows = {
                         action(T("翻页器状态"), "info", "PageTurnerStatus"),
                         bindRow(Binds.ACTIONS[1]), bindRow(Binds.ACTIONS[2]), bindRow(Binds.ACTIONS[3]),
+                        action(T("清除全部按键绑定"), "delete", "PageTurnerClear"),
                     } },
                     { title = T("连接"), rows = {
                         toggle(T("翻页器连着时不息屏"), "brightness_high", "keep_awake"),
