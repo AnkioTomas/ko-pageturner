@@ -1,9 +1,9 @@
 --[[--
 月读拓展登记：让月读把「翻页器」认成自己的扩展，并在月读设置的「阅读」组里放一页「翻页器」。
 
-页内：翻页器状态、下一个 / 上一个 / 确认三个按键（点哪个录哪个）、两个开关（翻页器连着时不息屏 / 蓝牙开了自动连翻页器）。
-设置值仍由插件存在 KOReader 的 `pageturner` 配置里，月读页只读写它；绑定、状态、开关都经广播事件
-（PageTurnerBind / PageTurnerStatus / PageTurnerToggle）交给插件实例，插件本身不依赖月读。
+页内：下一个 / 上一个 / 确认三个按键（点哪个录哪个）、两个开关（翻页器连着时不息屏 / 蓝牙开了自动连翻页器）。
+设置值仍由插件存在 KOReader 的 `pageturner` 配置里，月读页只读写它；绑定、清除、开关都经广播事件
+（PageTurnerBind / PageTurnerClear / PageTurnerToggle）交给插件实例，插件本身不依赖月读。
 没装月读时这个文件不会被读，菜单在 KOReader：齿轮 → 网络 → 翻页器。
 
 守护进程不用管：装了月读由月读的蓝牙开关拉起。
@@ -77,7 +77,6 @@ local function settingEntries(desktop)
             sections = function()
                 return {
                     { title = T("按键"), rows = {
-                        action(T("翻页器状态"), "info", "PageTurnerStatus"),
                         bindRow(Binds.ACTIONS[1]), bindRow(Binds.ACTIONS[2]), bindRow(Binds.ACTIONS[3]),
                         action(T("清除全部按键绑定"), "delete", "PageTurnerClear"),
                     } },

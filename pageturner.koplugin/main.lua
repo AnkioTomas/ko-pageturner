@@ -452,27 +452,7 @@ end
 -- 菜单
 ------------------------------------------------------------------------------
 
-function PageTurner:statusText()
-    local paths = Input:openPaths()
-    local bound = {}
-    for _idx, a in ipairs(ACTIONS) do
-        bound[#bound + 1] = T("%s：%s", a.label, gestureName(self.settings.binds[a.key]))
-    end
-    local lines = {
-        table.concat(bound, "\n"),
-        T("守护进程：%s", self:daemonRunning() and T("在跑") or T("没跑")),
-        T("已接管设备：%s", #paths > 0 and table.concat(paths, ", ") or T("（无）")),
-    }
-    if Moon:available() then
-        lines[#lines + 1] = T("月读蓝牙：%s", Moon:isOn() and T("开") or T("关"))
-        lines[#lines + 1] = T("翻页器：%s", Moon:isConnected() and T("已连上") or T("没连上"))
-    else
-        lines[#lines + 1] = T("月读：没装（翻页器照常用，只是不联动它的蓝牙开关）")
-    end
-    return table.concat(lines, "\n")
-end
-
--- 月读设置页（moon_source.lua）经广播事件驱动这三个入口，设置值仍由插件自己存。
+-- 月读设置页（moon_source.lua）经广播事件驱动这几个入口，设置值仍由插件自己存。
 function PageTurner:clearBinds()
     self.settings.binds = {}
     self:applyBindings()
@@ -481,10 +461,6 @@ function PageTurner:clearBinds()
 end
 function PageTurner:onPageTurnerClear() self:clearBinds() return true end
 function PageTurner:onPageTurnerBind(key) self:bind(key) return true end
-function PageTurner:onPageTurnerStatus()
-    UIManager:show(InfoMessage:new{ text = self:statusText() })
-    return true
-end
 function PageTurner:onPageTurnerToggle(key) self:toggle(key) return true end
 
 function PageTurner:addToMainMenu(menu_items)
@@ -509,11 +485,6 @@ function PageTurner:addToMainMenu(menu_items)
         text = T("翻页器"),
         sorting_hint = "network",
         sub_item_table = {
-            {
-                text = T("翻页器状态"),
-                keep_menu_open = true,
-                callback = function() UIManager:show(InfoMessage:new{ text = self:statusText() }) end,
-            },
             bindItem(ACTIONS[1]), bindItem(ACTIONS[2]), bindItem(ACTIONS[3]),
             {
                 text = T("清除全部按键绑定"),
