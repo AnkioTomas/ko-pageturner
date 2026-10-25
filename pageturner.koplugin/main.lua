@@ -195,15 +195,11 @@ function PageTurner:takeOverAll(cheap)
     return n
 end
 
-function PageTurner:hasDevice()
-    return #Input:openPaths() > 0
-end
-
 -- KHP 在翻页器待机 / 重连时会删掉再重建虚拟键盘设备，跟着重新接管。
 function PageTurner:onEvdevInputInsert(path) Input:onInsert(path) end
 function PageTurner:onEvdevInputRemove(path) Input:onRemove(path) end
 
---- 每 10 秒扫一遍：清掉死掉的 fd、把重新出现的翻页器接上。
+--- 没装月读时每 10 秒扫一遍（装了月读由状态变化触发）：清掉死掉的 fd、把重新出现的翻页器接上。
 -- 不能「接到一个就停」：机身自带的设备会让第一次扫描结果 >0，循环立刻退出，
 -- 之后翻页器一待机重连就再也没人接管了 —— 只剩状态里那行「已接管 N 个设备」在骗人。
 -- 走 cheap 扫描（不开 fd），一轮就一两次 readlink，可以一直跑。
@@ -245,6 +241,7 @@ function PageTurner:healFd()
     end
 end
 
+--- 没装月读时每 30 秒检查一次。
 function PageTurner:startFdHealLoop()
     if healing then return end
     healing = true
@@ -505,8 +502,6 @@ function PageTurner:init()
     self:loadSettings()
     self.ui.menu:registerToMainMenu(self)
     self:takeOverAll()
-    self:startRescanLoop()
-    self:startFdHealLoop()
 
     self:applyBindings()
     hookKeys()
@@ -517,10 +512,13 @@ function PageTurner:init()
     end
 
     if Moon:available() then
+        -- 月读的蓝牙状态变化会触发重新接管，不用轮询
         Moon:startWatch(self)
         Moon:sync(self)
     else
         self:ensureDaemon()
+        self:startRescanLoop()
+        self:startFdHealLoop()
     end
 end
 

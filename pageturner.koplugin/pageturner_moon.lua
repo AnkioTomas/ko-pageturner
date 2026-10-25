@@ -162,11 +162,12 @@ function Moon:sync(plugin)
         -- 连这一步是留给用户点的。这里替他按一下，让「月读显示已开启」真的等于
         -- 「翻页器能翻」。
         pcall(function() Moon:ensureConnected(plugin) end)
-        -- 已经连着、却一个设备都没接管上（比如关蓝牙再开，KHP 把设备重建过），
-        -- 那就别等下一轮了，现在就接管 —— 不然就是「显示连上了，按了没反应」。
+        -- 连着时重新接管：翻页器待机重连会重建输入节点，旧 fd 要换掉，
+        -- 不然就是「显示连上了，按了没反应」。没有轮询，全靠月读的状态变化触发这里。
         pcall(function()
-            if Moon:isConnected() and not plugin:hasDevice() then
-                plugin:takeOverAll()
+            if Moon:isConnected() then
+                plugin:healFd()
+                plugin:takeOverAll(true)
             end
         end)
     end
