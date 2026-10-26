@@ -536,6 +536,10 @@ function PageTurner:init()
         -- 状态变化立刻 sync；cheap 轮询兜住漏网的重建 / 断连重连
         Moon:startWatch(self)
         Moon:sync(self)
+        -- 月读自更新：没首页组件，插件起来后稍等再查（autoCheck 进程内只跑一次）
+        UIManager:scheduleIn(5, function()
+            pcall(function() require("pageturner_update").autoCheck() end)
+        end)
     else
         self:ensureDaemon()
     end
