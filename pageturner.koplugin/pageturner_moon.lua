@@ -14,7 +14,6 @@
 --]]
 
 local logger = require("logger")
-local UIManager = require("ui/uimanager")
 
 -- 自动重连退避：失败后 15s → 30s → 60s（封顶）。用户触摸 / HID 掉线会清退避立刻再试。
 local CONNECT_RETRY_MIN = 15
@@ -182,16 +181,53 @@ function Moon:onDeviceLost(plugin)
 end
 
 ------------------------------------------------------------------------------
--- 不让 Kindle 自己息屏
+-- 翻页器连着时不息屏
 ------------------------------------------------------------------------------
--- KOReader 的这两个是配对的计数式调用，多调一次 prevent 就得配一次 allow。
-function Moon:setAwake(on)
-    if on == self._awake then return end
-    pcall(function()
-        if on then UIManager:preventStandby() else UIManager:allowStandby() end
-    end)
+-- 以前用 UIManager:preventStandby，那只挡 CPU 轻待机，挡不住 AutoSuspend 息屏 ——
+-- 所以「翻页器连着时不息屏」形同虚设。正确做法对齐 keepalive.koplugin：
+--   Kindle: lipc preventScreenSaver + PluginShare.keepalive（AutoSuspend 跳过 t1）
+--   全平台: PluginShare.pause_auto_suspend（AutoSuspend 永不走到 suspend）
+---@param on boolean
+---@param force boolean|nil 休眠唤醒后系统可能清掉 preventScreenSaver，强制再写一遍
+function Moon:setAwake(on, force)
+    on = on and true or false
+    if on == self._awake and not force then return end
     self._awake = on
+    local Device = require("device")
+    local share = require("pluginshare")
+    if Device:isKindle() then
+        os.execute("lipc-set-prop com.lab126.powerd preventScreenSaver " .. (on and "1" or "0"))
+        share.keepalive = on
+    end
+    share.pause_auto_suspend = on
     logger.info("[pageturner] keep awake: " .. tostring(on))
+end
+
+--- 休眠唤醒：系统可能拆了 BLE / 清了 preventScreenSaver。立刻刷状态、重连、接管。
+-- 不能干等月读 30s 轮询——用户体感会超过一分钟。
+function Moon:onResume(plugin)
+    if not plugin then return end
+    self:resetConnectBackoff()
+    -- 先按「可能还连着」把不息屏写回；sync 后会按真实连接状态收敛。
+    if plugin.settings.keep_awake then
+        self:setAwake(true, true)
+    end
+    local m = bt()
+    local function after()
+        self:sync(plugin)
+        pcall(function()
+            plugin:healFd()
+            plugin:takeOverAll()
+        end)
+        if plugin.settings.auto_connect then
+            self:ensureConnected(plugin, true)
+        end
+    end
+    if m and type(m.refresh) == "function" then
+        pcall(function() m.refresh(after) end)
+    else
+        after()
+    end
 end
 
 ------------------------------------------------------------------------------
@@ -226,6 +262,8 @@ function Moon:sync(plugin)
     -- 但人就在跟前，这时候黑屏很烦。断了就放开，别白耗电。
     if plugin.settings.keep_awake then
         self:setAwake(self:isConnected())
+    elseif self._awake then
+        self:setAwake(false)
     end
 end
 

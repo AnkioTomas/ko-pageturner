@@ -174,11 +174,11 @@ function PageTurner:ensureDaemon()
 end
 
 --- 月读里开了蓝牙：守护进程由月读拉起（不能两边同时拉，两个进程会抢蓝牙），
--- 这里只等它起来（5 秒）再接管设备。
+-- 稍等接口就绪再接管。以前干等 5 秒，唤醒重连体感会超过一分钟；守护进程常驻时 0.5s 够。
 function PageTurner:onMoonBluetoothOn()
     if self._moon_on_pending then return end
     self._moon_on_pending = true
-    UIManager:scheduleIn(5, function()
+    UIManager:scheduleIn(0.5, function()
         self._moon_on_pending = false
         self:takeOverAll()
     end)
@@ -206,6 +206,15 @@ end
 --- 触摸 / 按键：断连后翻页器按键进不来，摸屏是「人还在」的信号，踢一次自动重连。
 function PageTurner:onInputEvent()
     if Moon:available() then Moon:onUserActivity(self) end
+end
+
+--- 休眠唤醒后立刻重连 / 接管 / 恢复不息屏（见 Moon.onResume）。
+function PageTurner:onResume()
+    if Moon:available() then
+        Moon:onResume(self)
+    else
+        self:takeOverAll()
+    end
 end
 
 --- 每 10 秒 cheap 扫一遍：清死 fd、接上重建的翻页器。
