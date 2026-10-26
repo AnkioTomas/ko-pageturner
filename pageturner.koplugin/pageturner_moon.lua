@@ -7,10 +7,20 @@
 
   月读蓝牙开  -> 清掉历史遗留的「关过」标记、补位拉起守护进程、接管翻页器设备、不息屏
   月读蓝牙关  -> 什么都不做（进程生死交给月读），只恢复自动息屏
+
+翻页器（Kindle Click 等）空闲几分钟会自己断 BLE。断了之后要能尽快连回来：
+短退避重试，用户摸一下屏幕就立刻再试；不要锁死 5 分钟——设备睡着时连不上是常态，
+醒过来却还在冷却窗口里，表现就是「屏亮着、蓝牙开着、按了没反应」。
 --]]
 
 local logger = require("logger")
 local UIManager = require("ui/uimanager")
+
+-- 自动重连退避：失败后 15s → 30s → 60s（封顶）。用户触摸 / HID 掉线会清退避立刻再试。
+local CONNECT_RETRY_MIN = 15
+local CONNECT_RETRY_MAX = 60
+-- 触摸狂点不要每下都打一次 connect。
+local ACTIVITY_KICK_GAP = 3
 
 local Moon = {
     _bt = nil,          -- 月读的蓝牙模块（拿到了才谈得上联动）
@@ -18,6 +28,9 @@ local Moon = {
     _watch = nil,
     _awake = false,     -- 当前是不是被我们按住不让息屏
     _hooked = false,
+    _last_connect_try = nil,
+    _connect_backoff = nil,
+    _activity_kick_at = nil,
 }
 
 --- 拿月读蓝牙模块的那个表。
@@ -59,6 +72,12 @@ function Moon:isConnected()
     return type(conns) == "table" and #conns > 0
 end
 
+--- 清掉重连退避，下次 ensureConnected 可以立刻跑。
+function Moon:resetConnectBackoff()
+    self._connect_backoff = nil
+    self._last_connect_try = nil
+end
+
 ------------------------------------------------------------------------------
 -- 补上最后一公里：蓝牙开了，就让翻页器真的连上
 ------------------------------------------------------------------------------
@@ -67,7 +86,10 @@ end
 -- 「蓝牙已连接，翻页器未连接」，还得手动重启一次守护进程才真连上。
 --
 -- 我们要的就是「月读显示已开启 = 翻页器真的能翻」，所以这里替他把这一下按了。
-function Moon:ensureConnected(plugin)
+---@param plugin table
+---@param force boolean|nil 无视退避（用户触摸 / HID 掉线后）
+---@return boolean 是否发起了连接请求
+function Moon:ensureConnected(plugin, force)
     if not plugin.settings.auto_connect then return false end
     local m = bt()
     if not m or type(m.setConnected) ~= "function" then return false end
@@ -78,6 +100,7 @@ function Moon:ensureConnected(plugin)
     -- 已经连着了就什么都不用做，顺便记住是哪台
     local conns = st.connections
     if type(conns) == "table" and #conns > 0 then
+        self:resetConnectBackoff()
         local first = conns[1]
         if type(first) == "table" and first.address
             and first.address ~= plugin.settings.last_pager_addr then
@@ -90,15 +113,11 @@ function Moon:ensureConnected(plugin)
     local devices = st.devices
     if type(devices) ~= "table" or #devices == 0 then return false end
 
-    -- 别太勤快。连不上基本不是多试几次能解决的（翻页器关机 / 连着别的主机 /
-    -- 不在附近），而我们每戳一次，守护进程就要 resume 一次去连、失败再 suspend ——
-    -- 在 BTmanager 里看着就是一直在重连，越戳越乱。
-    -- 所以：两次尝试至少隔 30 秒；失败过一次就老实 5 分钟再说。
+    -- 翻页器睡着时连不上是常态；短退避避免把 BTmanager 打成重连风暴，
+    -- 但绝不能锁死几分钟——设备一醒（用户按翻页器 / 摸屏）要马上再试。
     local now = os.time()
-    if self._last_connect_try and (now - self._last_connect_try) < 30 then
-        return false
-    end
-    if self._connect_failed_at and (now - self._connect_failed_at) < 300 then
+    local wait = self._connect_backoff or CONNECT_RETRY_MIN
+    if not force and self._last_connect_try and (now - self._last_connect_try) < wait then
         return false
     end
     self._last_connect_try = now
@@ -117,18 +136,49 @@ function Moon:ensureConnected(plugin)
     pcall(function()
         m.setConnected(dev, true, function(ok, err)
             if not ok then
-                self._connect_failed_at = os.time()
+                local prev = self._connect_backoff or CONNECT_RETRY_MIN
+                self._connect_backoff = math.min(CONNECT_RETRY_MAX, prev * 2)
                 logger.warn("[pageturner] failed to connect pager: " .. tostring(err)
-                    .. "（5 分钟内不再自动重试，请在月读面板或 BTmanager 里手动连）")
+                    .. "（" .. tostring(self._connect_backoff) .. "s 后重试；触摸屏幕或按翻页器可立刻再试）")
                 return
             end
-            self._connect_failed_at = nil
+            self:resetConnectBackoff()
             logger.info("[pageturner] pager connected")
             -- 连上了输入设备才会出现，这时候接管才有意义
             pcall(function() plugin:takeOverAll() end)
         end)
     end)
     return true
+end
+
+--- 用户摸了屏幕：翻页器按键在断连后进不来，触摸是「人还在」的信号。
+-- 状态已断 → 清退避强制再连；状态仍显示连着 → 可能只是 HID/fd 死了，立刻 heal + 接管。
+function Moon:onUserActivity(plugin)
+    if not plugin then return end
+    local on = self:isOn()
+    if not on then return end
+    local now = os.time()
+    if self._activity_kick_at and (now - self._activity_kick_at) < ACTIVITY_KICK_GAP then
+        return
+    end
+    self._activity_kick_at = now
+    if self:isConnected() then
+        pcall(function()
+            plugin:healFd()
+            plugin:takeOverAll(true)
+        end)
+        return
+    end
+    if not plugin.settings.auto_connect then return end
+    self:resetConnectBackoff()
+    self:ensureConnected(plugin, true)
+end
+
+--- HID 节点没了（翻页器休眠断连）：清退避并立刻按当前状态同步。
+function Moon:onDeviceLost(plugin)
+    if not plugin then return end
+    self:resetConnectBackoff()
+    self:sync(plugin)
 end
 
 ------------------------------------------------------------------------------
@@ -163,7 +213,7 @@ function Moon:sync(plugin)
         -- 「翻页器能翻」。
         pcall(function() Moon:ensureConnected(plugin) end)
         -- 连着时重新接管：翻页器待机重连会重建输入节点，旧 fd 要换掉，
-        -- 不然就是「显示连上了，按了没反应」。没有轮询，全靠月读的状态变化触发这里。
+        -- 不然就是「显示连上了，按了没反应」。cheap 轮询也会补这一枪。
         pcall(function()
             if Moon:isConnected() then
                 plugin:healFd()

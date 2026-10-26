@@ -76,9 +76,12 @@ end
 -- 名字按真机上看到的写：Kindle 上电源键叫 bd71828-pwrkey、触摸屏叫 goodix-ts，
 -- 光靠 "power" / "touchscreen" 匹配不上，结果这俩也被当成翻页器接管了 ——
 -- 状态里显示「已接管 3 个设备」，其实只有一个是真翻页器。
+-- Scribe 还有 bma4xy（加速度计）、WacomDigitizer / stylus / pt_mt（笔与触控），
+-- 不滤的话会一并接管，状态里「已接管 6 个设备」其实只有 Amazon Fire TV Remote 是翻页器。
 local BUILTIN_PATTERNS = {
     "volume", "power", "pwrkey", "bd71828", "goodix", "cover", "hall", "button",
-    "gpio", "touchscreen", "accelerometer",
+    "gpio", "touchscreen", "accelerometer", "bma4xy", "bma", "wacom", "stylus",
+    "pt_mt", "digitizer",
 }
 
 local function isBuiltin(name)

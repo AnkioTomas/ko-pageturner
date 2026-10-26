@@ -197,18 +197,30 @@ end
 
 -- KHP 在翻页器待机 / 重连时会删掉再重建虚拟键盘设备，跟着重新接管。
 function PageTurner:onEvdevInputInsert(path) Input:onInsert(path) end
-function PageTurner:onEvdevInputRemove(path) Input:onRemove(path) end
+function PageTurner:onEvdevInputRemove(path)
+    Input:onRemove(path)
+    -- 翻页器空闲断 BLE 时会走这里；别等月读 30s 轮询，立刻清退避并尝试重连。
+    if Moon:available() then Moon:onDeviceLost(self) end
+end
 
---- 没装月读时每 10 秒扫一遍（装了月读由状态变化触发）：清掉死掉的 fd、把重新出现的翻页器接上。
--- 不能「接到一个就停」：机身自带的设备会让第一次扫描结果 >0，循环立刻退出，
--- 之后翻页器一待机重连就再也没人接管了 —— 只剩状态里那行「已接管 N 个设备」在骗人。
--- 走 cheap 扫描（不开 fd），一轮就一两次 readlink，可以一直跑。
+--- 触摸 / 按键：断连后翻页器按键进不来，摸屏是「人还在」的信号，踢一次自动重连。
+function PageTurner:onInputEvent()
+    if Moon:available() then Moon:onUserActivity(self) end
+end
+
+--- 每 10 秒 cheap 扫一遍：清死 fd、接上重建的翻页器。
+-- 有月读也要跑：只靠蓝牙状态变化会漏掉「状态仍显示连着但 HID 节点已重建」和
+-- 「空闲断连后要尽快重连」——上次省掉轮询就是屏亮着翻页失效的根因之一。
+-- 不能「接到一个就停」：机身自带设备会让第一次 >0，循环立刻退出。
 function PageTurner:startRescanLoop()
     if rescanning then return end
     rescanning = true
     local function loop()
         UIManager:scheduleIn(10, function()
             self:takeOverAll(true)
+            if Moon:available() then
+                pcall(function() Moon:ensureConnected(self) end)
+            end
             loop()
         end)
     end
@@ -241,7 +253,7 @@ function PageTurner:healFd()
     end
 end
 
---- 没装月读时每 30 秒检查一次。
+--- 每 30 秒检查一次死 fd（有月读也跑，理由同 startRescanLoop）。
 function PageTurner:startFdHealLoop()
     if healing then return end
     healing = true
@@ -512,14 +524,14 @@ function PageTurner:init()
     end
 
     if Moon:available() then
-        -- 月读的蓝牙状态变化会触发重新接管，不用轮询
+        -- 状态变化立刻 sync；cheap 轮询兜住漏网的重建 / 断连重连
         Moon:startWatch(self)
         Moon:sync(self)
     else
         self:ensureDaemon()
-        self:startRescanLoop()
-        self:startFdHealLoop()
     end
+    self:startRescanLoop()
+    self:startFdHealLoop()
 end
 
 function PageTurner:onCloseWidget()
