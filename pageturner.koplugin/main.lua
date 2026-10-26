@@ -60,10 +60,16 @@ local ACTIONS, gestureName = Binds.ACTIONS, Binds.gestureName
 local TAP_GAP = 0.5      -- 连按判定窗口：两次按下间隔在这个数以内算连按
 local LONG_PRESS = 0.5
 local DEBOUNCE = 0.08    -- 见 feed()：一个动作被发成两次按下时只算一次
+-- 一次物理按下只许翻一页（见 hookKeys 里的 guard_until）：自带键位预设的翻页器
+-- 一次按下常同时走两条路——一路由插件手势翻页，另一路由 KOReader 原生翻页键翻页，
+-- 码还不一定相同（同码重发、PgDn+方向键成对发、两个设备节点各报一遍都有）。
+-- 在入口按时间窗兜底，不管第二遍长什么样，窗口内一律吞掉。
+local GUARD = 0.3
 local MAX_TAPS = 3
 local LEARN = { max = MAX_TAPS, long = true } -- 录手势时什么都认
 
 local current -- 当前阅读页上的实例，按键钩子只服务它
+local guard_until = 0 -- 在这个时刻之前到来的按下不再翻第二页（见 GUARD）
 local gestures = {} -- 键码 -> { max = 最大连按数, long = 有没有长按, act = { [kind] = 动作 } }
 local capture -- 绑定向导等待下一个手势的回调
 local states = {} -- 键码 -> 手势识别状态
@@ -395,6 +401,7 @@ local function emit(code, kind)
     local g = gestures[code]
     local key = g and g.act[kind]
     if not key or not current then return end
+    guard_until = util.getTimestamp() + GUARD
     if key == "ok" then return current:confirm() end
     for _idx, a in ipairs(ACTIONS) do
         if a.key == key then return onSolo(a.step) end
@@ -455,10 +462,21 @@ local function hookKeys()
     -- 取真正的原始处理函数：启动早期 inhibitInput 会把 handleKeyBoardEv 临时换成只管电源键的函数。
     local orig = Dev._key_ev_handler or Dev.handleKeyBoardEv
     Dev.handleKeyBoardEv = function(self, ev)
+        -- 一次按下只许翻一页：插件刚动作过（或下面刚放行过一个原生翻页键），
+        -- GUARD 内再来的按下不管什么码一律吞掉——同一遍按下的第二路信号只会迟到，不会早到。
+        if not capture and current and ev and ev.value == 1
+            and util.getTimestamp() < guard_until then
+            return nil
+        end
         local g = ev and (capture and LEARN or (current and gestures[ev.code]))
         if g then
             feed(ev.code, ev, g)
             return nil
+        end
+        -- 没绑的原生翻页键（PgUp/PgDn）放行给 KOReader 翻页，同时起窗：
+        -- 同一次按下的另一路信号随后被插件绑定的码送进来时，不再翻第二页。
+        if current and ev and ev.value == 1 and (ev.code == 104 or ev.code == 109) then
+            guard_until = util.getTimestamp() + GUARD
         end
         return orig(self, ev)
     end

@@ -54,6 +54,7 @@ A Bluetooth page-turner plugin for KOReader (Kindle / Kobo), plus a picker that 
 
 ## 排错
 
+- **按一下翻两页**：翻页器自带键位预设（出厂就发 PgUp/PgDn 这类标准翻页键）时，一次按下会同时走两条路：一路由插件绑定的手势翻页，另一路由 KOReader 原生翻页键翻页。插件已在按键入口兜底：翻过一页后的 0.3 秒内，再来的按下（不管什么键码）一律不再翻页。仍双翻的话，把日志发来看看。
 - 按键没反应：翻页器空闲几分钟常会自己断蓝牙，摸一下屏幕或按一下翻页器，插件会立刻重连并接管；还不行就看日志。
 - 日志在 `/mnt/us/koreader/crash.log`，搜 `[pageturner`。
 
