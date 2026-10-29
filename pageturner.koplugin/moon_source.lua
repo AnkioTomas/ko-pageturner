@@ -1,7 +1,7 @@
 --[[--
 月读拓展登记：让月读把「翻页器」认成自己的扩展，并在月读设置的「阅读」组里放一页「翻页器」。
 
-页内：下一个 / 上一个 / 确认三个按键（点哪个录哪个）、两个开关（翻页器连着时不息屏 / 蓝牙开了自动连翻页器）、
+页内：下一个 / 上一个 / 确认三个按键（点哪个录哪个）、两个开关（使用翻页器时不息屏 / 蓝牙开了自动连翻页器）、
 自动检查更新与手动检查（月读 UI）。
 设置值：按键/连接在 KOReader 的 `pageturner` 配置；更新开关在月读 `ext.pageturner` 源配置。
 绑定、清除、开关经广播事件交给插件实例。没装月读时这个文件不会被读。
@@ -79,7 +79,7 @@ local function settingEntries(desktop)
                         action(T("清除全部按键绑定"), "delete", "PageTurnerClear"),
                     } },
                     { title = T("连接"), rows = {
-                        toggle(T("翻页器连着时不息屏"), "brightness_high", "keep_awake"),
+                        toggle(T("使用翻页器时不息屏"), "brightness_high", "keep_awake"),
                         toggle(T("蓝牙开了自动连翻页器"), "bluetooth_connected", "auto_connect"),
                     } },
                     { title = T("更新"), rows = {

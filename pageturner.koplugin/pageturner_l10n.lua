@@ -7,7 +7,8 @@
 
 local TW = {
     ["翻页器"] = "翻頁器",
-    ["翻页器连着时不息屏"] = "翻頁器連著時不熄屏",
+    ["使用翻页器时不息屏"] = "使用翻頁器時不熄屏",
+    ["翻页器连着时不息屏"] = "使用翻頁器時不熄屏", -- 旧键兼容
     ["蓝牙开了自动连翻页器"] = "藍牙開了自動連翻頁器",
     ["下一个"] = "下一個",
     ["上一个"] = "上一個",
@@ -55,7 +56,8 @@ local TW = {
 
 local EN = {
     ["翻页器"] = "Page turner",
-    ["翻页器连着时不息屏"] = "Keep screen awake while connected",
+    ["使用翻页器时不息屏"] = "Keep screen awake while using the page turner",
+    ["翻页器连着时不息屏"] = "Keep screen awake while using the page turner",
     ["蓝牙开了自动连翻页器"] = "Auto-connect when Bluetooth is on",
     ["下一个"] = "Next",
     ["上一个"] = "Previous",

@@ -1,16 +1,20 @@
 --[[--
-月读联动：翻页器跟着月读的蓝牙开关走，翻页器连着的时候不让 Kindle 自己息屏。
+月读联动：翻页器跟着月读的蓝牙开关走；本会话用过翻页器时不让 Kindle 自己息屏。
 
 只经月读公开的 features.bluetooth 的 current/watch/setConnected，不改月读任何函数。
 
 它做的事：
 
-  月读蓝牙开  -> 清掉历史遗留的「关过」标记、补位拉起守护进程、接管翻页器设备、不息屏
+  月读蓝牙开  -> 清掉历史遗留的「关过」标记、补位拉起守护进程、接管翻页器设备
   月读蓝牙关  -> 什么都不做（进程生死交给月读），只恢复自动息屏
+  翻页器连上过一次（本 BT 开着的会话）-> 按住不息屏，直到蓝牙关掉
 
-翻页器（Kindle Click 等）空闲几分钟会自己断 BLE。断了之后要能尽快连回来：
-短退避重试，用户摸一下屏幕就立刻再试；不要锁死 5 分钟——设备睡着时连不上是常态，
-醒过来却还在冷却窗口里，表现就是「屏亮着、蓝牙开着、按了没反应」。
+翻页器（Kindle Click 等）空闲几分钟会自己断 BLE。旧逻辑「连着才不息屏」在断连瞬间
+松开 pause_auto_suspend，KOReader AutoSuspend（常 10 分钟）就会按上次触摸入睡——
+人还在看书、只是 Click 睡了。所以不息屏改成会话闩，不跟瞬时连接态绑死。
+
+断了之后要能尽快连回来：短退避重试，用户摸一下屏幕就立刻再试；不要锁死 5 分钟——
+设备睡着时连不上是常态，醒过来却还在冷却窗口里，表现就是「屏亮着、蓝牙开着、按了没反应」。
 --]]
 
 local logger = require("logger")
@@ -26,6 +30,7 @@ local Moon = {
     _owner = nil,       -- 当前订阅月读状态的插件实例
     _watch = nil,
     _awake = false,     -- 当前是不是被我们按住不让息屏
+    _session_awake = false, -- 本 BT 开着期间是否已经连上过翻页器（不息屏闩）
     _hooked = false,
     _last_connect_try = nil,
     _connect_backoff = nil,
@@ -96,10 +101,11 @@ function Moon:ensureConnected(plugin, force)
     local on, st = self:isOn()
     if not on or not st then return false end
 
-    -- 已经连着了就什么都不用做，顺便记住是哪台
+    -- 已经连着了就什么都不用做，顺便记住是哪台，并闩住不息屏会话
     local conns = st.connections
     if type(conns) == "table" and #conns > 0 then
         self:resetConnectBackoff()
+        self:markSessionAwake()
         local first = conns[1]
         if type(first) == "table" and first.address
             and first.address ~= plugin.settings.last_pager_addr then
@@ -142,9 +148,11 @@ function Moon:ensureConnected(plugin, force)
                 return
             end
             self:resetConnectBackoff()
+            self:markSessionAwake()
             logger.info("[pageturner] pager connected")
-            -- 连上了输入设备才会出现，这时候接管才有意义
+            -- 连上了输入设备才会出现，这时候接管才有意义；顺手收敛不息屏
             pcall(function() plugin:takeOverAll() end)
+            self:applyAwake(plugin)
         end)
     end)
     return true
@@ -174,6 +182,7 @@ function Moon:onUserActivity(plugin)
 end
 
 --- HID 节点没了（翻页器休眠断连）：清退避并立刻按当前状态同步。
+-- 不息屏闩不在这里清——Click 空闲断 BLE / 换章重建节点都是常态，人还在看书。
 function Moon:onDeviceLost(plugin)
     if not plugin then return end
     self:resetConnectBackoff()
@@ -181,12 +190,43 @@ function Moon:onDeviceLost(plugin)
 end
 
 ------------------------------------------------------------------------------
--- 翻页器连着时不息屏
+-- 使用翻页器时不息屏（会话闩，不跟瞬时连接态绑死）
 ------------------------------------------------------------------------------
--- 以前用 UIManager:preventStandby，那只挡 CPU 轻待机，挡不住 AutoSuspend 息屏 ——
--- 所以「翻页器连着时不息屏」形同虚设。正确做法对齐 keepalive.koplugin：
+-- 以前用 UIManager:preventStandby，那只挡 CPU 轻待机，挡不住 AutoSuspend 息屏。
+-- 后来改成「连着才 pause_auto_suspend」，Click 空闲断 BLE 立刻松手，照样睡。
+-- 正确做法：本 BT 开着期间一旦连上过就闩住，对齐 keepalive.koplugin：
 --   Kindle: lipc preventScreenSaver + PluginShare.keepalive（AutoSuspend 跳过 t1）
 --   全平台: PluginShare.pause_auto_suspend（AutoSuspend 永不走到 suspend）
+-- 蓝牙关掉才松手（用户明确结束），别在短暂断连上抖。
+
+--- 要不要撑着不息屏：设置开 +（已闩住或当前连着）；蓝牙明确关了才清闩。
+---@param plugin table
+---@return boolean
+function Moon:shouldStayAwake(plugin)
+    if not plugin or not plugin.settings.keep_awake then
+        self._session_awake = false
+        return false
+    end
+    local on = self:isOn()
+    if on == nil then
+        -- 刚醒 / 轮询中状态未知：有闩先撑着，别把会话清掉
+        return self._session_awake == true
+    end
+    if not on then
+        self._session_awake = false
+        return false
+    end
+    if self:isConnected() then
+        self._session_awake = true
+    end
+    return self._session_awake == true
+end
+
+--- 记一次「本会话已用过翻页器」（连接成功回调里也会打）。
+function Moon:markSessionAwake()
+    self._session_awake = true
+end
+
 ---@param on boolean
 ---@param force boolean|nil 休眠唤醒后系统可能清掉 preventScreenSaver，强制再写一遍
 function Moon:setAwake(on, force)
@@ -203,13 +243,25 @@ function Moon:setAwake(on, force)
     logger.info("[pageturner] keep awake: " .. tostring(on))
 end
 
+--- 按 shouldStayAwake 收敛息屏闩（设置关或蓝牙关 → 松开）。
+---@param plugin table
+---@param force boolean|nil
+function Moon:applyAwake(plugin, force)
+    local want = self:shouldStayAwake(plugin)
+    if want then
+        self:setAwake(true, force)
+    elseif self._awake then
+        self:setAwake(false)
+    end
+end
+
 --- 休眠唤醒：系统可能拆了 BLE / 清了 preventScreenSaver。立刻刷状态、重连、接管。
 -- 不能干等月读 30s 轮询——用户体感会超过一分钟。
 function Moon:onResume(plugin)
     if not plugin then return end
     self:resetConnectBackoff()
-    -- 先按「可能还连着」把不息屏写回；sync 后会按真实连接状态收敛。
-    if plugin.settings.keep_awake then
+    -- 睡前用过翻页器：先强制写回不息屏，等 BT 恢复后再由 sync 收敛（未知态不拆闩）
+    if plugin.settings.keep_awake and self._session_awake then
         self:setAwake(true, true)
     end
     local m = bt()
@@ -258,13 +310,7 @@ function Moon:sync(plugin)
         end)
     end
 
-    -- 翻页器连着的时候不让息屏：翻页间隔可能很长（一页看几分钟），
-    -- 但人就在跟前，这时候黑屏很烦。断了就放开，别白耗电。
-    if plugin.settings.keep_awake then
-        self:setAwake(self:isConnected())
-    elseif self._awake then
-        self:setAwake(false)
-    end
+    self:applyAwake(plugin)
 end
 
 ------------------------------------------------------------------------------
@@ -284,7 +330,8 @@ function Moon:stopWatch(plugin)
     if not plugin or self._owner ~= plugin then return end
     self._watch.cancel()
     self._watch, self._owner = nil, nil
-    self:setAwake(false)
+    -- 阅读页实例关掉不等于结束翻页会话；FM 侧还会再 startWatch。
+    -- 真要松手走 applyAwake（蓝牙关 / 设置关），这里只撤订阅。
 end
 
 return Moon

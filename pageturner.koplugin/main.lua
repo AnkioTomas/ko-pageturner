@@ -110,6 +110,11 @@ end
 function PageTurner:toggle(key)
     self.settings[key] = not self.settings[key]
     self:saveSettings()
+    if key == "keep_awake" then
+        Moon:applyAwake(self)
+    elseif key == "auto_connect" and self.settings.auto_connect then
+        Moon:ensureConnected(self, true)
+    end
 end
 
 --- 按设置重建手势表。
@@ -527,7 +532,7 @@ function PageTurner:addToMainMenu(menu_items)
                 keep_menu_open = true,
                 callback = function() self:clearBinds() end,
             },
-            toggleItem(T("翻页器连着时不息屏"), "keep_awake"),
+            toggleItem(T("使用翻页器时不息屏"), "keep_awake"),
             toggleItem(T("蓝牙开了自动连翻页器"), "auto_connect"),
         },
     }
@@ -568,7 +573,7 @@ end
 function PageTurner:onCloseWidget()
     if current == self then current = nil end
     Moon:stopWatch(self)
-    Moon:setAwake(false)
+    -- 不息屏跟「本 BT 会话用过翻页器」走，关阅读页 / 换实例不拆，避免 Click 空闲断连后立刻被 AutoSuspend 睡掉
 end
 
 return PageTurner
