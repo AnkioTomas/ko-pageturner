@@ -196,10 +196,15 @@ end
 -- 后来改成「连着才 pause_auto_suspend」，Click 空闲断 BLE 立刻松手，照样睡。
 -- 正确做法：本 BT 开着期间一旦连上过就闩住：
 --   全平台: PluginShare.pause_auto_suspend（AutoSuspend 不走到 suspend）
---   Kindle: PluginShare.keepalive（AutoSuspend 跳过 t1 重置；月读 tasks 降旗时也不清 pause）
+--   Kindle: PluginShare.keepalive（AutoSuspend 跳过 t1；月读 tasks 降旗时也不清 pause）
+--          + 每 5 分钟 PowerD:resetT1Timeout（KOReader 自己也是这个间隔；
+--            keepalive 让 AutoSuspend 不再喂 t1，不喂 powerd 仍会息屏）
 -- 不要写 lipc preventScreenSaver=1：那是 keepalive.koplugin 的「系统绝不睡」，
 -- powerd 会连电源键 / UIManager:suspend（也是 powerButton）一并拒掉。
 -- 蓝牙关掉才松手（用户明确结束），别在短暂断连上抖。
+
+-- powerd t1 ~10 分钟；KindlePowerD:resetT1Timeout 注释写最多每 5 分钟请求一次。
+local T1_BEAT = 5 * 60
 
 --- 要不要撑着不息屏：设置开 +（已闩住或当前连着）；蓝牙明确关了才清闩。
 ---@param plugin table
@@ -229,6 +234,34 @@ function Moon:markSessionAwake()
     self._session_awake = true
 end
 
+--- Kindle：喂一下 powerd t1，别让系统自己息屏。非 Kindle 无操作。
+function Moon:kickT1()
+    local Device = require("device")
+    if not Device:isKindle() then return end
+    pcall(function() Device:getPowerDevice():resetT1Timeout() end)
+end
+
+function Moon:stopT1Beat()
+    local beat = self._t1_beat
+    if not beat then return end
+    self._t1_beat = nil
+    pcall(function() require("ui/uimanager"):unschedule(beat) end)
+end
+
+--- keepalive 期间 AutoSuspend 不喂 t1，我们按官方间隔自己喂。
+function Moon:startT1Beat()
+    if self._t1_beat then return end
+    if not require("device"):isKindle() then return end
+    local UIManager = require("ui/uimanager")
+    local function beat()
+        if not self._awake or self._t1_beat ~= beat then return end
+        self:kickT1()
+        UIManager:scheduleIn(T1_BEAT, beat)
+    end
+    self._t1_beat = beat
+    UIManager:scheduleIn(T1_BEAT, beat)
+end
+
 ---@param on boolean
 ---@param force boolean|nil 休眠唤醒后强制再写一遍
 function Moon:setAwake(on, force)
@@ -243,6 +276,12 @@ function Moon:setAwake(on, force)
     end
     share.keepalive = on
     share.pause_auto_suspend = on
+    if on then
+        self:kickT1()
+        self:startT1Beat()
+    else
+        self:stopT1Beat()
+    end
     logger.info("[pageturner] keep awake: " .. tostring(on))
 end
 
@@ -256,6 +295,11 @@ function Moon:applyAwake(plugin, force)
     elseif self._awake then
         self:setAwake(false)
     end
+end
+
+--- 用户休眠：停 t1 心跳。醒了 onResume → setAwake(force) 再开。
+function Moon:onSuspend(_plugin)
+    self:stopT1Beat()
 end
 
 --- 休眠唤醒：系统可能拆了 BLE。立刻刷状态、重连、接管。

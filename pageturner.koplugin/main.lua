@@ -219,6 +219,11 @@ function PageTurner:onInputEvent()
     if Moon:available() then Moon:onUserActivity(self) end
 end
 
+--- 用户休眠：停 Kindle t1 心跳（见 Moon.onSuspend）。
+function PageTurner:onSuspend()
+    if Moon:available() then Moon:onSuspend(self) end
+end
+
 --- 休眠唤醒后立刻重连 / 接管 / 恢复不息屏（见 Moon.onResume）。
 function PageTurner:onResume()
     if Moon:available() then
