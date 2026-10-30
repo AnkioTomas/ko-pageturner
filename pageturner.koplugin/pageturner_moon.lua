@@ -7,7 +7,7 @@
 
   月读蓝牙开  -> 清掉历史遗留的「关过」标记、补位拉起守护进程、接管翻页器设备
   月读蓝牙关  -> 什么都不做（进程生死交给月读），只恢复自动息屏
-  翻页器连上过一次（本 BT 开着的会话）-> 按住不息屏，直到蓝牙关掉
+  翻页器连上过一次（本 BT 开着的会话）-> 挡住自动息屏，直到蓝牙关掉
 
 翻页器（Kindle Click 等）空闲几分钟会自己断 BLE。旧逻辑「连着才不息屏」在断连瞬间
 松开 pause_auto_suspend，KOReader AutoSuspend（常 10 分钟）就会按上次触摸入睡——
@@ -194,9 +194,11 @@ end
 ------------------------------------------------------------------------------
 -- 以前用 UIManager:preventStandby，那只挡 CPU 轻待机，挡不住 AutoSuspend 息屏。
 -- 后来改成「连着才 pause_auto_suspend」，Click 空闲断 BLE 立刻松手，照样睡。
--- 正确做法：本 BT 开着期间一旦连上过就闩住，对齐 keepalive.koplugin：
---   Kindle: lipc preventScreenSaver + PluginShare.keepalive（AutoSuspend 跳过 t1）
---   全平台: PluginShare.pause_auto_suspend（AutoSuspend 永不走到 suspend）
+-- 正确做法：本 BT 开着期间一旦连上过就闩住：
+--   全平台: PluginShare.pause_auto_suspend（AutoSuspend 不走到 suspend）
+--   Kindle: PluginShare.keepalive（AutoSuspend 跳过 t1 重置；月读 tasks 降旗时也不清 pause）
+-- 不要写 lipc preventScreenSaver=1：那是 keepalive.koplugin 的「系统绝不睡」，
+-- powerd 会连电源键 / UIManager:suspend（也是 powerButton）一并拒掉。
 -- 蓝牙关掉才松手（用户明确结束），别在短暂断连上抖。
 
 --- 要不要撑着不息屏：设置开 +（已闩住或当前连着）；蓝牙明确关了才清闩。
@@ -228,17 +230,18 @@ function Moon:markSessionAwake()
 end
 
 ---@param on boolean
----@param force boolean|nil 休眠唤醒后系统可能清掉 preventScreenSaver，强制再写一遍
+---@param force boolean|nil 休眠唤醒后强制再写一遍
 function Moon:setAwake(on, force)
     on = on and true or false
     if on == self._awake and not force then return end
     self._awake = on
     local Device = require("device")
     local share = require("pluginshare")
+    -- 旧版写过 preventScreenSaver=1 会卡死电源键；每次收敛都清掉，绝不置 1。
     if Device:isKindle() then
-        os.execute("lipc-set-prop com.lab126.powerd preventScreenSaver " .. (on and "1" or "0"))
-        share.keepalive = on
+        os.execute("lipc-set-prop com.lab126.powerd preventScreenSaver 0")
     end
+    share.keepalive = on
     share.pause_auto_suspend = on
     logger.info("[pageturner] keep awake: " .. tostring(on))
 end
@@ -255,12 +258,12 @@ function Moon:applyAwake(plugin, force)
     end
 end
 
---- 休眠唤醒：系统可能拆了 BLE / 清了 preventScreenSaver。立刻刷状态、重连、接管。
+--- 休眠唤醒：系统可能拆了 BLE。立刻刷状态、重连、接管。
 -- 不能干等月读 30s 轮询——用户体感会超过一分钟。
 function Moon:onResume(plugin)
     if not plugin then return end
     self:resetConnectBackoff()
-    -- 睡前用过翻页器：先强制写回不息屏，等 BT 恢复后再由 sync 收敛（未知态不拆闩）
+    -- 睡前用过翻页器：先强制写回自动不息屏闩，等 BT 恢复后再由 sync 收敛（未知态不拆闩）
     if plugin.settings.keep_awake and self._session_awake then
         self:setAwake(true, true)
     end

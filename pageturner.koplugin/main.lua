@@ -555,6 +555,11 @@ function PageTurner:init()
         self.ui.view:registerViewModule("pageturner", { paintTo = function(_p, bb) self:paintSelection(bb) end })
     end
 
+    -- 旧版 keep_awake 可能留下 preventScreenSaver=1，电源键整场失灵。
+    if Device:isKindle() then
+        os.execute("lipc-set-prop com.lab126.powerd preventScreenSaver 0")
+    end
+
     if Moon:available() then
         -- 状态变化立刻 sync；cheap 轮询兜住漏网的重建 / 断连重连
         Moon:startWatch(self)
