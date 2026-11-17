@@ -44,7 +44,8 @@ local PageTurner = WidgetContainer:extend{
 
 local DEFAULTS = {
     auto_connect     = true,
-    keep_awake       = true,
+    keep_awake       = false, -- 开了会撑住 AutoSuspend / powerd，设备永不自动息屏，最费电
+    confirm_lock     = false, -- 正常读书时确认键改为锁屏（选想法 / 弹窗里仍照常）
     last_pager_addr  = "",
     binds            = {},   -- 动作 -> 手势 { code = 键码, kind = 1 / 2 / 3（连按次数）或 "long" }
 }
@@ -239,7 +240,7 @@ function PageTurner:onResume()
     end
 end
 
---- 每 10 秒 cheap 扫一遍：清死 fd、接上重建的翻页器。
+--- 每 30 秒 cheap 扫一遍：清死 fd、接上重建的翻页器。
 -- 有月读也要跑：只靠蓝牙状态变化会漏掉「状态仍显示连着但 HID 节点已重建」和
 -- 「空闲断连后要尽快重连」——上次省掉轮询就是屏亮着翻页失效的根因之一。
 -- 不能「接到一个就停」：机身自带设备会让第一次 >0，循环立刻退出。
@@ -247,7 +248,7 @@ function PageTurner:startRescanLoop()
     if rescanning then return end
     rescanning = true
     local function loop()
-        UIManager:scheduleIn(10, function()
+        UIManager:scheduleIn(30, function()
             self:takeOverAll(true)
             if Moon:available() and not self._suspended then
                 pcall(function() Moon:ensureConnected(self) end)
@@ -285,12 +286,12 @@ function PageTurner:healFd()
     end
 end
 
---- 每 30 秒检查一次死 fd（有月读也跑，理由同 startRescanLoop）。
+--- 每 2 分钟检查一次死 fd（有月读也跑，理由同 startRescanLoop）。
 function PageTurner:startFdHealLoop()
     if healing then return end
     healing = true
     local function loop()
-        UIManager:scheduleIn(30, function()
+        UIManager:scheduleIn(120, function()
             self:healFd()
             loop()
         end)
@@ -384,6 +385,8 @@ function PageTurner:confirm()
         self.mode = "view"
         self.base = #UIManager._window_stack
         self.items[self.idx].open()
+    elseif self.settings.confirm_lock then
+        UIManager:sendEvent(Event:new("RequestSuspend"))
     else
         local items = Thoughts.collect(self.ui)
         if not items then
@@ -545,6 +548,7 @@ function PageTurner:addToMainMenu(menu_items)
                 callback = function() self:clearBinds() end,
             },
             toggleItem(T("使用翻页器时不息屏"), "keep_awake"),
+            toggleItem(T("确认键改为锁屏"), "confirm_lock"),
             toggleItem(T("蓝牙开了自动连翻页器"), "auto_connect"),
         },
     }

@@ -21,9 +21,11 @@ local function broadcast(name, ...)
     UIManager:broadcastEvent(require("ui/event"):new(name, ...))
 end
 
+local OFF_BY_DEFAULT = { keep_awake = true, confirm_lock = true } -- 同 main.lua 的 DEFAULTS
 local function enabled(key)
     local saved = G_reader_settings:readSetting("pageturner") or {}
-    return saved[key] ~= false
+    if saved[key] == nil then return not OFF_BY_DEFAULT[key] end
+    return saved[key]
 end
 
 local function settingEntries(desktop)
@@ -84,6 +86,7 @@ local function settingEntries(desktop)
                     } },
                     { title = T("连接"), rows = {
                         toggle(T("使用翻页器时不息屏"), "brightness_high", "keep_awake"),
+                        toggle(T("确认键改为锁屏"), "lock", "confirm_lock"),
                         toggle(T("蓝牙开了自动连翻页器"), "bluetooth_connected", "auto_connect"),
                     } },
                     { title = T("更新"), rows = {
