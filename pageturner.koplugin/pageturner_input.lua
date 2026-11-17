@@ -82,6 +82,9 @@ local BUILTIN_PATTERNS = {
     "volume", "power", "pwrkey", "bd71828", "goodix", "cover", "hall", "button",
     "gpio", "touchscreen", "accelerometer", "bma4xy", "bma", "wacom", "stylus",
     "pt_mt", "digitizer",
+    -- KPW6 的 kindle-input-pt 是系统 input_manager 建的透传节点，电源键 / 翻页键都走它。
+    -- 当成翻页器接管还会 stop input_manager，节点被删，唤醒的电源键事件丢失，卡在原生锁屏。
+    "kindle-input",
 }
 
 local function isBuiltin(name)
@@ -206,6 +209,7 @@ end
 function Input:setupKeyboard(data)
     if not data or not data.event_path then return false end
     local path = data.event_path
+    if isBuiltin(data.name) then return false end
 
     local old = self.keyboard_fds[path]
     if old then
