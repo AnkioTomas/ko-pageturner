@@ -196,6 +196,7 @@ function PageTurner:onMoonBluetoothOn()
 end
 
 function PageTurner:takeOverAll(cheap)
+    if self._suspended then return 0 end
     local ok, n = pcall(Input.findAndSetupKeyboards, Input, cheap)
     if not ok then
         logger.warn("[pageturner] takeover failed: " .. tostring(n))
@@ -207,7 +208,9 @@ function PageTurner:takeOverAll(cheap)
 end
 
 -- KHP 在翻页器待机 / 重连时会删掉再重建虚拟键盘设备，跟着重新接管。
-function PageTurner:onEvdevInputInsert(path) Input:onInsert(path) end
+function PageTurner:onEvdevInputInsert(path)
+    if not self._suspended then Input:onInsert(path) end
+end
 function PageTurner:onEvdevInputRemove(path)
     Input:onRemove(path)
     -- 翻页器空闲断 BLE 时会走这里；别等月读 30s 轮询，立刻清退避并尝试重连。
@@ -221,11 +224,14 @@ end
 
 --- 用户休眠：停 Kindle t1 心跳（见 Moon.onSuspend）。
 function PageTurner:onSuspend()
+    self._suspended = true
+    Input:releaseAll()
     if Moon:available() then Moon:onSuspend(self) end
 end
 
 --- 休眠唤醒后立刻重连 / 接管 / 恢复不息屏（见 Moon.onResume）。
 function PageTurner:onResume()
+    self._suspended = nil
     if Moon:available() then
         Moon:onResume(self)
     else
@@ -243,7 +249,7 @@ function PageTurner:startRescanLoop()
     local function loop()
         UIManager:scheduleIn(10, function()
             self:takeOverAll(true)
-            if Moon:available() then
+            if Moon:available() and not self._suspended then
                 pcall(function() Moon:ensureConnected(self) end)
             end
             loop()
@@ -254,6 +260,7 @@ end
 
 --- 设备被重建后，我们手里的 fd 还指向已删除的节点：关掉它并重新接管。
 function PageTurner:healFd()
+    if self._suspended then return end
     local now = os.time()
     if self._last_heal_at and now - self._last_heal_at < HEAL_COOLDOWN then return end
     local pid = ffi.C.getpid()

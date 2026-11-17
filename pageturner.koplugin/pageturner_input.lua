@@ -305,6 +305,17 @@ function Input:onRemove(path)
     end
 end
 
+--- 休眠前放掉所有设备：休眠期间 KHP 会删掉虚拟键盘，死 fd 留在 KOReader 的轮询里，
+-- 唤醒时 poll 反复返回 ENODEV(19)，Kindle 卡死在原生锁屏。醒来后由 findAndSetupKeyboards 重新接管。
+function Input:releaseAll()
+    for path in pairs(self.keyboard_fds) do
+        pcall(Device.input.close, Device.input, path)
+        if Device.input.opened_devices then Device.input.opened_devices[path] = nil end
+    end
+    self.keyboard_fds = {}
+    self.connected_keyboards = 0
+end
+
 --- 给外部（自愈循环、状态显示）用的查询
 function Input:openPaths()
     local paths = {}
